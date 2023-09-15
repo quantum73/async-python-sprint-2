@@ -4,15 +4,15 @@ import typing as tp
 class Job:
     def __init__(
             self,
-            start_at: str = None,
+            start_at: str | None = None,
             max_working_time: int = -1,
             tries: int = 0,
-            dependencies: tp.Sequence["Job"] = None,
+            dependencies: tp.Sequence["Job"] | None = None,
     ):
         self._start_at = start_at
         self._max_working_time = max_working_time
         self._tries = tries
-        self._dependencies = dependencies or []
+        self._dependencies = None if dependencies is None else dependencies
 
     def run(self):
         pass
