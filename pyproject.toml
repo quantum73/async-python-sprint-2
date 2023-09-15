@@ -1,0 +1,30 @@
+[tool.mypy]
+python_version = "3.11"
+exclude = [
+    'venv',
+    '.venv',
+    'env',
+    '.env',
+    'tests',
+    'external/analyzer.py',
+    'external/api_test.py',
+    'external/forecasting.py',
+]
+
+[tool.pytest.ini_options]
+addopts = "--strict-markers --tb=line -s -v -p no:cacheprovider"
+
+[tool.poetry]
+name = "async-python-sprint-2"
+version = "0.1.0"
+description = ""
+authors = ["Nikita Fomin <fominquant@yandex.ru>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
