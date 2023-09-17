@@ -1,17 +1,13 @@
-import json
 import typing as tp
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from multiprocessing import Process, Queue
 
-from config import get_console_logger
-from task_examples import TARGET_FUNCS
-from utils import JobStatus
+from core.task_examples import TARGET_FUNCS
+from core.utils import JobStatus, get_console_logger
 
 job_logger = get_console_logger(name=__name__)
-
-JobType = tp.TypeVar("JobType", bound="Job")
 
 
 @dataclass
@@ -55,7 +51,7 @@ class Job:
         if not isinstance(value, int):
             raise ValueError(f"\"max_working_time\" field must be int. You passed - {type(value)}.")
         if value <= 0:
-            raise ValueError(f"\"max_working_time\" field must be greater than 0.")
+            raise ValueError("\"max_working_time\" field must be greater than 0.")
         return value
 
     @staticmethod
@@ -63,7 +59,7 @@ class Job:
         if not isinstance(value, int):
             raise ValueError(f"\"tries\" field must be int. You passed - {type(value)}")
         if value < 0:
-            raise ValueError(f"\"tries\" field must be greater or equal than 0")
+            raise ValueError("\"tries\" field must be greater or equal than 0")
         return value
 
     @property
@@ -78,13 +74,13 @@ class Job:
     def run_func_by_max_working_time(
             self,
             func: tp.Callable,
-            timeout: int = None,
-            args: tp.Sequence = None,
-            kwargs: tp.MutableMapping = None,
+            timeout: int | None = None,
+            args: tp.Sequence | None = None,
+            kwargs: tp.MutableMapping | None = None,
     ):
         args = args or ()
         kwargs = kwargs or {}
-        result_queue = Queue()
+        result_queue: Queue = Queue()
         process_kwargs = {
             "q": result_queue,
             "func": func,
@@ -117,7 +113,7 @@ class Job:
         self.is_stopped = True
 
     @staticmethod
-    def _job_to_dict(job: JobType) -> dict:
+    def _job_to_dict(job: "Job") -> dict:
         return {
             "idx": str(job.idx),
             "target_func": job._target_func_name,
@@ -135,7 +131,7 @@ class Job:
         return job_data
 
     @staticmethod
-    def _prepare_job_data(target_job_data: dict) -> dict | None:
+    def _prepare_job_data(target_job_data: tp.MutableMapping) -> tp.MutableMapping | None:
         try:
             target_func_name = target_job_data["target_func"]
             target_func = TARGET_FUNCS.get(target_func_name)
@@ -150,41 +146,27 @@ class Job:
             job_logger.error(f"Occurred error during preparing job data: {err}")
             return None
 
+    @staticmethod
+    def _prepare_dependencies(dependencies: tp.Sequence[tp.MutableMapping]) -> tp.Sequence[tp.MutableMapping]:
+        prepared_dependencies = []
+        for depend_job in dependencies:
+            data = Job._prepare_job_data(depend_job)
+            if data is None:
+                continue
+            prepared_dependencies.append(data)
+        return prepared_dependencies
+
     @classmethod
-    def from_dict(cls, data: dict) -> JobType | None:
+    def from_dict(cls, data: dict) -> tp.Any:
         try:
             prepared_job_base_data = cls._prepare_job_data(data)
             if prepared_job_base_data is None:
                 return None
 
-            dependencies = [cls._prepare_job_data(d) for d in prepared_job_base_data["dependencies"]]
-            dependencies = list(filter(lambda x: x is not None, dependencies))
-            dependencies = [cls(**d) for d in dependencies]
-            prepared_job_base_data["dependencies"] = dependencies
+            prepared_dependencies = cls._prepare_dependencies(prepared_job_base_data["dependencies"])
+            new_dependencies = [cls(**d) for d in prepared_dependencies]
+            prepared_job_base_data["dependencies"] = new_dependencies
             return cls(**data)
         except Exception as err:
             job_logger.error(f"Occurred error in \"from_dict\" function: {err}")
             return None
-
-
-if __name__ == '__main__':
-    # first_job = Job(
-    #     idx=uuid.uuid4(),
-    #     target_func=TARGET_FUNCS["calculate_func"],
-    #     start_at=datetime.now() + timedelta(seconds=2),
-    #     args=(1, 10),
-    #     dependencies=[
-    #         Job(idx=uuid.uuid4(), target_func=TARGET_FUNCS["error_func"]),
-    #         Job(idx=uuid.uuid4(), target_func=TARGET_FUNCS["random_error_func"], tries=3),
-    #         Job(idx=uuid.uuid4(), target_func=TARGET_FUNCS["web_func"]),
-    #     ],
-    # )
-    # with open("backup.json", "w", encoding="utf8") as f:
-    #     json.dump(first_job.to_dict(), fp=f, ensure_ascii=False, indent=4)
-
-    with open("backup.json", "r", encoding="utf8") as f:
-        backup_data = json.load(fp=f)
-
-    first_job = Job.from_dict(data=backup_data)
-    print(len(first_job.dependencies))
-    print(first_job.dependencies)

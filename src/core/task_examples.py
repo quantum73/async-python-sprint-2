@@ -1,5 +1,6 @@
 import random
 import time
+import typing as tp
 
 import requests
 
@@ -42,7 +43,7 @@ def long_func():
         time.sleep(1)
 
 
-TARGET_FUNCS = {
+TARGET_FUNCS: tp.Mapping[str, tp.Callable] = {
     "calculate_func": calculate_func,
     "web_func": web_func,
     "error_func": error_func,

@@ -1,14 +1,10 @@
 [tool.mypy]
-python_version = "^3.10"
 exclude = [
     'venv',
     '.venv',
     'env',
     '.env',
     'tests',
-    'external/analyzer.py',
-    'external/api_test.py',
-    'external/forecasting.py',
 ]
 
 [tool.pytest.ini_options]

@@ -6,11 +6,10 @@ import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from config import get_console_logger
-from exceptions import MaxSchedulerSize
+from core.exceptions import MaxSchedulerSize
+from core.task_examples import TARGET_FUNCS
+from core.utils import coroutine, JobStatus, get_console_logger
 from job import Job
-from task_examples import TARGET_FUNCS
-from utils import coroutine, JobStatus
 
 scheduler_logger = get_console_logger(name=__name__)
 
