@@ -1,0 +1,2 @@
+class MaxSchedulerSize(Exception):
+    pass
