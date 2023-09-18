@@ -9,6 +9,8 @@ from core.utils import JobStatus, get_console_logger
 
 job_logger = get_console_logger(name=__name__)
 
+JobType = tp.TypeVar("JobType", bound="Job")
+
 
 @dataclass
 class Job:
@@ -27,13 +29,16 @@ class Job:
     status: JobStatus = field(init=False, repr=False, default=JobStatus.WAITING)
     target_func_name: str = field(init=False, repr=False)
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         self.start_at = self.validate_start_at(value=self.start_at)
         self.max_working_time = self.validate_max_working_time(value=self.max_working_time)
         self.tries = self.validate_tries(value=self.tries)
         self._target_func_name = self.target_func.__name__
 
-    def __str__(self):
+    def __str__(self) -> str:
+        return f"Job[{self.idx}](target_func={self.target_func.__name__})"
+
+    def __repr__(self) -> str:
         return f"Job[{self.idx}](target_func={self.target_func.__name__})"
 
     @staticmethod
@@ -67,7 +72,7 @@ class Job:
         return bool(self.start_at > datetime.now())
 
     @staticmethod
-    def wrap_func_for_process(*, q: Queue, func: tp.Callable, args: tp.Sequence, kwargs: tp.MutableMapping) -> tp.Any:
+    def wrap_func_for_process(*, q: Queue, func: tp.Callable, args: tp.Sequence, kwargs: tp.MutableMapping) -> None:
         result = func(*args, **kwargs)
         q.put(result)
 
@@ -77,7 +82,7 @@ class Job:
             timeout: int | None = None,
             args: tp.Sequence | None = None,
             kwargs: tp.MutableMapping | None = None,
-    ):
+    ) -> tp.Any:
         args = args or ()
         kwargs = kwargs or {}
         result_queue: Queue = Queue()
@@ -106,10 +111,14 @@ class Job:
 
         return self.target_func(*self.args, **self.kwargs)
 
-    def pause(self):
+    def pause(self) -> None:
+        """
+        Функция паузы.
+        Сделал по типу свитчера - каждый вызов меняет прошлое значение на противоположное.
+        """
         self.is_paused = not self.is_paused
 
-    def stop(self):
+    def stop(self) -> None:
         self.is_stopped = True
 
     @staticmethod

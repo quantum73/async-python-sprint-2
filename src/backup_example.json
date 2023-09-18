@@ -1,0 +1,37 @@
+[
+    {
+        "idx": "58344b72-43fe-49f8-b57f-b89572f8b231",
+        "target_func": "calculate_func",
+        "args": [
+            1,
+            10
+        ],
+        "kwargs": {},
+        "start_at": "2023-09-18T12:53:39.568403",
+        "max_working_time": null,
+        "tries": 0,
+        "dependencies": [
+            {
+                "idx": "c9043328-2de4-4d2b-a150-fa0af3ee6c4b",
+                "target_func": "web_func",
+                "args": [],
+                "kwargs": {
+                    "url": "https://google.com"
+                },
+                "start_at": "2023-09-18T12:53:34.568403",
+                "max_working_time": null,
+                "tries": 0
+            }
+        ]
+    },
+    {
+        "idx": "63979043-9a00-4bf3-8166-b6c91a45f69f",
+        "target_func": "random_error_func",
+        "args": [],
+        "kwargs": {},
+        "start_at": "2023-09-18T12:53:34.568403",
+        "max_working_time": null,
+        "tries": 3,
+        "dependencies": []
+    }
+]
