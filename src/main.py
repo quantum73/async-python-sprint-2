@@ -1,8 +1,8 @@
 import uuid
 from datetime import datetime, timedelta
 
-from core.task_examples import TARGET_FUNCS
 from core.utils import get_console_logger
+from examples.tasks import TARGET_FUNCS
 from job import Job
 from scheduler import Scheduler
 
@@ -10,7 +10,7 @@ main_logger = get_console_logger(name=__name__)
 
 
 def cold_restart_example() -> None:
-    scheduler = Scheduler(pool_size=5)
+    scheduler = Scheduler(scheduler_size=5)
     main_logger.info('Restart scheduler...')
     scheduler.restart()
     main_logger.info('Scheduler done!')
@@ -19,7 +19,7 @@ def cold_restart_example() -> None:
 
 def hot_restart_example() -> None:
     now = datetime.now()
-    scheduler = Scheduler(pool_size=5)
+    scheduler = Scheduler(scheduler_size=5)
     scheduler.schedule(
         job=Job(
             idx=uuid.uuid4(),
@@ -55,7 +55,7 @@ def hot_restart_example() -> None:
 
 
 def run_example() -> None:
-    scheduler = Scheduler(pool_size=5)
+    scheduler = Scheduler(scheduler_size=5)
     scheduler.schedule(
         job=Job(
             idx=uuid.uuid4(),
@@ -78,7 +78,7 @@ def run_example() -> None:
 
 
 def run_example_with_max_size_error() -> None:
-    scheduler = Scheduler(pool_size=2)
+    scheduler = Scheduler(scheduler_size=2)
     scheduler.schedule(
         job=Job(
             idx=uuid.uuid4(),

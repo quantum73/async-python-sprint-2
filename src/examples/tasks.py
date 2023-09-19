@@ -5,7 +5,7 @@ import typing as tp
 import requests
 
 
-def calculate_func(start: int = 0, end: int = 10):
+def calculate_func(start: int = 0, end: int = 10) -> int:
     summ = 0
     for i in range(start, end + 1):
         summ += i
@@ -19,25 +19,25 @@ def web_func(url: str) -> int:
     return r.status_code
 
 
-def error_func():
+def error_func() -> None:
     time.sleep(1)
     raise ValueError("err")
 
 
-def random_error_func():
+def random_error_func() -> str:
     time.sleep(1)
     if random.randint(1, 2) == 1:
         raise ValueError("err")
     return "GOOD"
 
 
-def run_delay(delay: int):
+def run_delay(delay: int) -> int:
     print(f"Sleep on {delay} seconds")
     time.sleep(delay)
     return delay
 
 
-def long_func():
+def long_func() -> None:
     for i in range(1, 6):
         print(f"[long_func] step №{i}")
         time.sleep(1)

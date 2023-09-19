@@ -3,8 +3,8 @@ import queue
 import time
 import typing as tp
 import uuid
-from pathlib import Path
 
+from config import BACKUP_PATH, SCHEDULER_SIZE
 from core.exceptions import MaxSchedulerSize
 from core.utils import coroutine, JobStatus, get_console_logger
 from job import Job
@@ -13,10 +13,10 @@ scheduler_logger = get_console_logger(name=__name__)
 
 
 class Scheduler:
-    BACKUP_PATH = Path("backup.json")
+    NOT_FINISHED_STATUSES = [JobStatus.WAITING, JobStatus.PROCESSING]
 
-    def __init__(self, pool_size: int = 10) -> None:
-        self._pool_size = pool_size
+    def __init__(self, scheduler_size: int = SCHEDULER_SIZE) -> None:
+        self._scheduler_size = scheduler_size
         self._tasks: dict[uuid.UUID, Job] = {}
         self._completed_tasks: dict[uuid.UUID, Job] = {}
         self._scheduler_is_run = False
@@ -32,7 +32,7 @@ class Scheduler:
     @property
     def scheduler_is_full(self) -> bool:
         """Проверка на то полон ли планировщик."""
-        return len(self._tasks) >= self._pool_size
+        return len(self._tasks) >= self._scheduler_size
 
     def _add_job(self, job: Job) -> None:
         """
@@ -49,43 +49,13 @@ class Scheduler:
         for depend_job in job.dependencies:
             self._add_job(job=depend_job)
 
-    def _get_waiting_jobs(self) -> list:
+    def _get_waiting_jobs(self) -> tp.Sequence[Job]:
         """Получаем задачи, которые ожидают своего выполнения."""
-        return list(filter(lambda x: x[1].status == JobStatus.WAITING, self._tasks.items()))
-
-    def complete_job(self, job: Job) -> None:
-        """Удаляем завершенную задачу из основного хранилища и добавляем в хранилище завершенных задач."""
-        self._tasks.pop(job.idx, None)
-        self._completed_tasks[job.idx] = job
-
-    def stop_job(self, job: Job) -> None:
-        """Функция остановки задачи, когда её останавливают методом stop или по истечению max_working_time."""
-        job.status = JobStatus.STOPPED
-        self.complete_job(job=job)
-
-    def retry_job(self, job: Job) -> None:
-        """
-        Функция перезапуска задачи, если она завершилась ошибкой.
-        Если количество попыток больше 0, то делаем задача ожидающий статус (WAITING),
-        чтобы она затем запустилась снова. Иначе - завершаем задачу со статусом ошибки (ERROR).
-        """
-        if job.tries > 0:
-            job.tries -= 1
-            job.status = JobStatus.WAITING
-            scheduler_logger.info(f'{job} left tries = {job.tries}')
-        else:
-            job.status = JobStatus.ERROR
-            self.complete_job(job=job)
-
-    def run_job(self, job: Job) -> None:
-        """Функция для запуска задачи и её завершение при корректном выполнении."""
-        job.result = job.run()
-        job.status = JobStatus.COMPLETED
-        self.complete_job(job=job)
+        return list(filter(lambda job: job.status == JobStatus.WAITING, self._tasks.values()))
 
     def all_job_dependencies_finished(self, job: Job) -> bool:
         """Функция для проверки того что все задачи-зависимости завершены."""
-        return bool(all(dependency_job.idx not in self._tasks for dependency_job in job.dependencies))
+        return bool(all(item.status not in self.NOT_FINISHED_STATUSES for item in job.dependencies))
 
     def _managing_job(self, target_job: tp.Generator) -> None:
         """Функция-менеджер ожидающих задач."""
@@ -96,48 +66,36 @@ class Scheduler:
                 self._scheduler_is_run = False
                 break
 
-            for _, job in waiting_jobs:
+            for job in waiting_jobs:
                 if not self.all_job_dependencies_finished(job=job):
                     scheduler_logger.info(f'Not all {job} dependencies finished')
                     time.sleep(0.5)
                     continue
-
-                if job.is_stopped:
-                    scheduler_logger.info(f'Stopping {job} by stop command...')
-                    self.stop_job(job=job)
-                    scheduler_logger.info(f'{job} stopped!')
-                    continue
-
-                if job.is_paused:
-                    scheduler_logger.info(f'{job} on pause.')
-                    time.sleep(0.5)
-                    continue
-
                 if job.is_start_later:
                     scheduler_logger.info(f'{job} start later. At {job.start_at}')
                     time.sleep(0.5)
                     continue
 
-                scheduler_logger.info(f'Processing {job}')
-                job.status = JobStatus.PROCESSING
                 target_job.send(job)
 
     @coroutine
     def execute_job(self) -> tp.Generator:
         """Корутина, выполняющая задачу."""
         while job := (yield):
+            scheduler_logger.info(f'Processing {job}...')
+            job.processing()
             try:
                 scheduler_logger.info(f"Try to execute {job}...")
-                self.run_job(job=job)
+                job.run()
                 scheduler_logger.info(f'{job} done!')
             except queue.Empty:
                 scheduler_logger.info(f'Stopping {job} by max_working_time...')
-                self.stop_job(job=job)
+                job.stop()
                 scheduler_logger.info(f'{job} stopped!')
             except Exception as err:
                 scheduler_logger.error(f'{job} has error: {err}')
                 scheduler_logger.info(f'Try to retry {job}...')
-                self.retry_job(job=job)
+                job.retry()
 
     def run(self) -> None:
         """Запуск планировщика."""
@@ -145,6 +103,7 @@ class Scheduler:
         try:
             execute_job_coroutine = self.execute_job()
             self._managing_job(execute_job_coroutine)
+            self._actualize_tasks()
         except KeyboardInterrupt:
             scheduler_logger.info("You press Ctrl+C.")
             self._scheduler_is_run = False
@@ -157,17 +116,16 @@ class Scheduler:
             self.stop()
 
         scheduler_logger.info("Restore data from backup...")
-        with self.BACKUP_PATH.open("r", encoding="utf8") as f:
+        with BACKUP_PATH.open("r", encoding="utf8") as f:
             backup_data = json.load(fp=f)
-
-        for job_data in backup_data:
-            job = Job.from_dict(data=job_data)
-            if job is None:
-                continue
-            self.schedule(job=job)
-
+            for job_data in backup_data:
+                job = Job.from_dict(data=job_data)
+                if job is None:
+                    continue
+                self.schedule(job=job)
         scheduler_logger.info("Backup data has been restored!")
 
+        scheduler_logger.info("Running scheduler again...")
         self.run()
 
     def _create_backup_data(self) -> tp.Sequence[tp.MutableMapping]:
@@ -190,12 +148,18 @@ class Scheduler:
 
         return data_to_save
 
+    def _actualize_tasks(self):
+        self._completed_tasks = {idx: job for idx, job in self._tasks.items()
+                                 if job.status not in self.NOT_FINISHED_STATUSES}
+        self._tasks = {idx: job for idx, job in self._tasks.items() if job.status in self.NOT_FINISHED_STATUSES}
+
     def stop(self) -> None:
         """Остановка и бэкап планировщика."""
         scheduler_logger.info("Stopping scheduler...")
+        self._actualize_tasks()
         scheduler_logger.info("Creating backup file...")
         data_to_save = self._create_backup_data()
-        with self.BACKUP_PATH.open("w", encoding="utf8") as f:
+        with BACKUP_PATH.open("w", encoding="utf8") as f:
             json.dump(data_to_save, fp=f, ensure_ascii=False, indent=4)
 
     def summary(self) -> None:

@@ -4,8 +4,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from multiprocessing import Process, Queue
 
-from core.task_examples import TARGET_FUNCS
 from core.utils import JobStatus, get_console_logger
+from examples.tasks import TARGET_FUNCS
 
 job_logger = get_console_logger(name=__name__)
 
@@ -24,7 +24,6 @@ class Job:
     dependencies: tp.Sequence["Job"] = field(default_factory=list)
 
     result: tp.Any = field(init=False, repr=False, default=None)
-    is_paused: bool = field(init=False, repr=False, default=False)
     is_stopped: bool = field(init=False, repr=False, default=False)
     status: JobStatus = field(init=False, repr=False, default=JobStatus.WAITING)
     target_func_name: str = field(init=False, repr=False)
@@ -45,7 +44,9 @@ class Job:
     def validate_start_at(value: tp.Any) -> datetime:
         if not isinstance(value, datetime):
             raise ValueError(f"\"start_at\" field must be datetime.datetime. You passed - {type(value)}.")
-        if value < datetime.now():
+
+        now = datetime.now().replace(microsecond=0)
+        if value.replace(microsecond=0) < now:
             raise ValueError("\"start_at\" field must have the value of the current or future date.")
         return value
 
@@ -100,26 +101,43 @@ class Job:
 
         return result_queue.get(block=False)
 
-    def run(self) -> tp.Any:
+    def processing(self) -> None:
+        """Функция, процессинга задачи перед её выполнением."""
+        self.status = JobStatus.PROCESSING
+
+    def run(self) -> None:
+        """Функция, запускающая выполнение задачи."""
         if self.max_working_time:
-            return self.run_func_by_max_working_time(
+            result = self.run_func_by_max_working_time(
                 func=self.target_func,
                 timeout=self.max_working_time,
                 args=self.args,
                 kwargs=self.kwargs,
             )
+        else:
+            result = self.target_func(*self.args, **self.kwargs)
 
-        return self.target_func(*self.args, **self.kwargs)
+        self.result = result
+        self.status = JobStatus.COMPLETED
 
-    def pause(self) -> None:
+    def retry(self) -> None:
         """
-        Функция паузы.
-        Сделал по типу свитчера - каждый вызов меняет прошлое значение на противоположное.
+        Функция перезапуска задачи, если она завершилась ошибкой.
+        Если количество попыток больше 0, то делаем задаче ожидающий статус (WAITING),
+        чтобы она затем запустилась снова. Иначе - ставим статус завершения с ошибкой (ERROR).
         """
-        self.is_paused = not self.is_paused
+        if self.tries > 0:
+            self.tries -= 1
+            self.status = JobStatus.WAITING
+            job_logger.info(f'{self} left tries = {self.tries}')
+        else:
+            job_logger.info(f'{self} has no tries anymore. Stopping with error status.')
+            self.stop(status=JobStatus.ERROR)
 
-    def stop(self) -> None:
+    def stop(self, status: JobStatus = JobStatus.STOPPED) -> None:
+        """Функция остановки задачи, когда её останавливают методом stop или по истечению max_working_time."""
         self.is_stopped = True
+        self.status = status
 
     @staticmethod
     def _job_to_dict(job: "Job") -> dict:
